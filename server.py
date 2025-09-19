@@ -5,21 +5,19 @@ import numpy as np
 import io
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})  # allow all origins
+CORS(app)
 
 @app.route("/process", methods=["POST"])
 def process():
-    # User uploaded image
     file = request.files["frame"]
 
     # Open Moana template
-    frame = Image.open("temp2.png").convert("RGBA")
+    frame = Image.open("template1.png").convert("RGBA")
 
-    # Convert to numpy
     data = np.array(frame)
     r, g, b, a = data.T
 
-    # Detect green screen
+    # Detect green
     green_min = 100
     red_max   = 120
     blue_max  = 120
@@ -37,11 +35,10 @@ def process():
     # Merge
     combined = Image.alpha_composite(background, frame_transparent)
 
-    # Return result
     img_io = io.BytesIO()
     combined.save(img_io, "PNG")
     img_io.seek(0)
-    return send_file(img_io, mimetype="image/png")
+    return send_file(img_io, mimetype="image/png", as_attachment=True, download_name="result.png")
 
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000)
