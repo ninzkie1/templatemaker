@@ -9,50 +9,47 @@ CORS(app)
 
 @app.route("/process", methods=["POST"])
 def process():
-    shots = int(request.form.get("shots", 1))
+    # User uploaded photo
+    user_photo = Image.open(request.files["frame"]).convert("RGBA")
 
-    # choose template
-    template_file = "magenta.png" if shots == 1 else "temp1.png"
-    template = Image.open(template_file).convert("RGBA")
-    combined = template.copy()
+    # Template with magenta box area
+    template = Image.open("magenta.png").convert("RGBA")
 
-    # Convert to numpy to detect magenta boxes
+    # Convert to numpy to detect magenta
     data = np.array(template)
     r, g, b, a = data.T
+
+    # Detect magenta (red + blue high, green low)
     red_min = 180
     blue_min = 180
     green_max = 100
     magenta_mask = (r > red_min) & (b > blue_min) & (g < green_max)
+
+    # Make a mask image (L mode)
     mask_array = (magenta_mask.T * 255).astype(np.uint8)
     mask = Image.fromarray(mask_array, mode='L')
 
-    # If multiple boxes in template, find each region
-    # For simplicity, just take mask and split bounding boxes:
-    from PIL import ImageChops
-    # Find connected components:
-    # (quick hack: for 1 box, just getbbox; for 3, manually crop)
-    if shots == 1:
-        frames = [request.files['frame1'] if 'frame1' in request.files else request.files['frame']]
-        boxes = [mask.getbbox()]
-    else:
-        # user uploaded frame1, frame2, frame3
-        frames = [request.files[f'frame{i+1}'] for i in range(3)]
-        # For multiple boxes, you could predefine coordinates for each box
-        # e.g. manually measure in your template:
-        boxes = [(50,50,400,300),(450,50,700,300),(50,350,400,600)]  # example coords!
+    # Get bounding box of magenta region automatically
+    bbox = mask.getbbox()  # (x1, y1, x2, y2)
 
-    overlay = Image.new("RGBA", template.size, (0,0,0,0))
+    combined = template.copy()  # start with template
 
-    for frame_file, box in zip(frames, boxes):
-        user_photo = Image.open(frame_file).convert("RGBA")
-        x1, y1, x2, y2 = box
+    if bbox:
+        x1, y1, x2, y2 = bbox
         box_width = x2 - x1
         box_height = y2 - y1
+
+        # Resize user photo to FILL the box (crop edges if needed)
         user_fill = ImageOps.fit(user_photo, (box_width, box_height), method=Image.LANCZOS)
+
+        # Paste directly at top-left of the box
+        overlay = Image.new("RGBA", template.size, (0, 0, 0, 0))
         overlay.paste(user_fill, (x1, y1))
 
-    combined.paste(overlay, (0,0), overlay)
+        # Paste overlay into template using mask (only magenta area)
+        combined.paste(overlay, (0, 0), mask)
 
+    # Return image to user
     img_io = io.BytesIO()
     combined.save(img_io, "PNG")
     img_io.seek(0)
