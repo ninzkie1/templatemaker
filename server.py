@@ -9,31 +9,32 @@ CORS(app)
 
 @app.route("/process", methods=["POST"])
 def process():
-    file = request.files["frame"]
+    # User uploaded photo
+    user_photo = Image.open(request.files["frame"]).convert("RGBA")
 
-    # Open Moana template
-    frame = Image.open("temp3.png").convert("RGBA")
+    # Template with green screen area
+    template = Image.open("temp3.png").convert("RGBA")
 
-    data = np.array(frame)
+    data = np.array(template)
     r, g, b, a = data.T
 
-    # Detect green
+    # Green screen detection
     green_min = 100
-    red_max   = 120
-    blue_max  = 120
-    green_areas = (g > green_min) & (r < red_max) & (b < blue_max)
+    red_max = 120
+    blue_max = 120
+    green_mask = (g > green_min) & (r < red_max) & (b < blue_max)
 
-    # Make green transparent
-    data[..., :-1][green_areas.T] = (0, 0, 0)
-    data[..., -1][green_areas.T] = 0
-    frame_transparent = Image.fromarray(data)
+    # Create mask image (L mode)
+    mask = Image.fromarray((green_mask.T * 255).astype(np.uint8), mode='L')
 
-    # User photo as background
-    background = Image.open(file).convert("RGBA")
-    background = background.resize(frame_transparent.size)
+    # Resize user photo to template size
+    user_photo_resized = user_photo.resize(template.size)
 
-    # Merge
-    combined = Image.alpha_composite(background, frame_transparent)
+    # Create a blank RGBA canvas
+    combined = template.copy()
+
+    # Paste user photo only where the mask is white (green area)
+    combined.paste(user_photo_resized, (0, 0), mask)
 
     img_io = io.BytesIO()
     combined.save(img_io, "PNG")
