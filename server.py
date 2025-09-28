@@ -9,32 +9,32 @@ CORS(app)
 
 @app.route("/process", methods=["POST"])
 def process():
-    # User uploaded photo
-    user_photo = Image.open(request.files["frame"]).convert("RGBA")
+    file = request.files["frame"]
 
-    # Template with green screen area
-    template = Image.open("temp3.png").convert("RGBA")
+    # Open template with magenta area
+    frame = Image.open("temp3.png").convert("RGBA")
 
-    data = np.array(template)
+    data = np.array(frame)
     r, g, b, a = data.T
 
-    # Green screen detection
-    green_min = 100
-    red_max = 120
-    blue_max = 120
-    green_mask = (g > green_min) & (r < red_max) & (b < blue_max)
+    # Detect magenta (red + blue high, green low)
+    red_min = 180    # adjust as needed
+    blue_min = 180   # adjust as needed
+    green_max = 100  # adjust as needed
 
-    # Create mask image (L mode)
-    mask = Image.fromarray((green_mask.T * 255).astype(np.uint8), mode='L')
+    magenta_areas = (r > red_min) & (b > blue_min) & (g < green_max)
 
-    # Resize user photo to template size
-    user_photo_resized = user_photo.resize(template.size)
+    # Make magenta transparent
+    data[..., :-1][magenta_areas.T] = (0, 0, 0)
+    data[..., -1][magenta_areas.T] = 0
+    frame_transparent = Image.fromarray(data)
 
-    # Create a blank RGBA canvas
-    combined = template.copy()
+    # User photo as background
+    background = Image.open(file).convert("RGBA")
+    background = background.resize(frame_transparent.size)
 
-    # Paste user photo only where the mask is white (green area)
-    combined.paste(user_photo_resized, (0, 0), mask)
+    # Merge
+    combined = Image.alpha_composite(background, frame_transparent)
 
     img_io = io.BytesIO()
     combined.save(img_io, "PNG")
