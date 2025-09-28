@@ -13,7 +13,7 @@ def process():
     user_photo = Image.open(request.files["frame"]).convert("RGBA")
 
     # Template with magenta box area
-    template = Image.open("magenta.png").convert("RGBA")
+    template = Image.open("temp3.png").convert("RGBA")
 
     # Convert to numpy to detect magenta
     data = np.array(template)
@@ -39,14 +39,12 @@ def process():
         box_width = x2 - x1
         box_height = y2 - y1
 
-        # Resize user photo to fit inside the box while keeping aspect ratio
-        user_fit = ImageOps.contain(user_photo, (box_width, box_height))
+        # Resize user photo to FILL the box (crop edges if needed)
+        user_fill = ImageOps.fit(user_photo, (box_width, box_height), method=Image.LANCZOS)
 
-        # Center it inside the box
+        # Paste directly at top-left of the box
         overlay = Image.new("RGBA", template.size, (0, 0, 0, 0))
-        x_offset = x1 + (box_width - user_fit.width) // 2
-        y_offset = y1 + (box_height - user_fit.height) // 2
-        overlay.paste(user_fit, (x_offset, y_offset))
+        overlay.paste(user_fill, (x1, y1))
 
         # Paste overlay into template using mask (only magenta area)
         combined.paste(overlay, (0, 0), mask)
