@@ -12,7 +12,7 @@ def process():
     file = request.files["frame"]
 
     # Open template with magenta area
-    frame = Image.open("temp3.png").convert("RGBA")
+    frame = Image.open("magenta.png").convert("RGBA")
 
     data = np.array(frame)
     r, g, b, a = data.T
