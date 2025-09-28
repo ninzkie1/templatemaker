@@ -13,7 +13,7 @@ def process():
     user_photo = Image.open(request.files["frame"]).convert("RGBA")
 
     # Template with magenta box area
-    template = Image.open("temp3.png").convert("RGBA")
+    template = Image.open("magenta.png").convert("RGBA")
 
     # Convert to numpy to detect magenta
     data = np.array(template)
