@@ -12,7 +12,7 @@ def process():
     file = request.files["frame"]
 
     # Open Moana template
-    frame = Image.open("temp2.png").convert("RGBA")
+    frame = Image.open("temp3.png").convert("RGBA")
 
     data = np.array(frame)
     r, g, b, a = data.T
