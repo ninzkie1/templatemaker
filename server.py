@@ -1,6 +1,6 @@
 from flask import Flask, request, send_file
 from flask_cors import CORS
-from PIL import Image
+from PIL import Image, ImageOps
 import numpy as np
 import io
 
@@ -9,33 +9,49 @@ CORS(app)
 
 @app.route("/process", methods=["POST"])
 def process():
-    file = request.files["frame"]
+    # User uploaded photo
+    user_photo = Image.open(request.files["frame"]).convert("RGBA")
 
-    # Open template with magenta area
-    frame = Image.open("magenta.png").convert("RGBA")
+    # Template with magenta box area
+    template = Image.open("magenta.png").convert("RGBA")
 
-    data = np.array(frame)
+    # Convert to numpy to detect magenta
+    data = np.array(template)
     r, g, b, a = data.T
 
     # Detect magenta (red + blue high, green low)
-    red_min = 180    # adjust as needed
-    blue_min = 180   # adjust as needed
-    green_max = 100  # adjust as needed
+    red_min = 180
+    blue_min = 180
+    green_max = 100
+    magenta_mask = (r > red_min) & (b > blue_min) & (g < green_max)
 
-    magenta_areas = (r > red_min) & (b > blue_min) & (g < green_max)
+    # Make a mask image (L mode)
+    mask_array = (magenta_mask.T * 255).astype(np.uint8)
+    mask = Image.fromarray(mask_array, mode='L')
 
-    # Make magenta transparent
-    data[..., :-1][magenta_areas.T] = (0, 0, 0)
-    data[..., -1][magenta_areas.T] = 0
-    frame_transparent = Image.fromarray(data)
+    # Get bounding box of magenta region automatically
+    bbox = mask.getbbox()  # (x1, y1, x2, y2)
 
-    # User photo as background
-    background = Image.open(file).convert("RGBA")
-    background = background.resize(frame_transparent.size)
+    combined = template.copy()  # start with template
 
-    # Merge
-    combined = Image.alpha_composite(background, frame_transparent)
+    if bbox:
+        x1, y1, x2, y2 = bbox
+        box_width = x2 - x1
+        box_height = y2 - y1
 
+        # Resize user photo to fit inside the box while keeping aspect ratio
+        user_fit = ImageOps.contain(user_photo, (box_width, box_height))
+
+        # Center it inside the box
+        overlay = Image.new("RGBA", template.size, (0, 0, 0, 0))
+        x_offset = x1 + (box_width - user_fit.width) // 2
+        y_offset = y1 + (box_height - user_fit.height) // 2
+        overlay.paste(user_fit, (x_offset, y_offset))
+
+        # Paste overlay into template using mask (only magenta area)
+        combined.paste(overlay, (0, 0), mask)
+
+    # Return image to user
     img_io = io.BytesIO()
     combined.save(img_io, "PNG")
     img_io.seek(0)
