@@ -121,7 +121,7 @@ def process_triple():
             return {"error": f"Missing {file_key}. Got {list(request.files.keys())}"}, 400
         user_photos.append(Image.open(request.files[file_key]))
 
-    combined = place_images("temp1.png", user_photos)
+    combined = place_images("final3.png", user_photos)
     output_type = request.args.get("output", "png").lower()
 
     # Always export the template-applied image
