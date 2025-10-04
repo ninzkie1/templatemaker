@@ -7,6 +7,15 @@ import io
 app = Flask(__name__)
 CORS(app)
 
+@app.route("/")
+def home():
+    return "✅ App is running!", 200
+
+
+@app.route("/ping")
+def ping():
+    return {"status": "ok"}, 200
+
 
 def detect_magenta_boxes(template: Image.Image):
     """Detect bounding boxes of magenta areas in the template."""
