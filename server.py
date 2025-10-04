@@ -7,28 +7,28 @@ import io
 app = Flask(__name__)
 CORS(app)
 
+# Global caches
+templates = {}
+boxes_cache = {}
+masks_cache = {}
+
+
 @app.route("/")
 def home():
     return "✅ App is running!", 200
+
 
 @app.route("/ping")
 def ping():
     return {"status": "ok"}, 200
 
 
-# ======================
-# Preload Templates Once
-# ======================
-templates = {}
-boxes_cache = {}
-masks_cache = {}
-
 def detect_magenta_boxes(template: Image.Image):
     """Detect bounding boxes of magenta areas in the template."""
     data = np.array(template.convert("RGB"))
     r, g, b = data[:, :, 0], data[:, :, 1], data[:, :, 2]
 
-    # Detect magenta areas
+    # Detect magenta areas (looser threshold)
     magenta_mask = (r > 150) & (b > 150) & (g < 160)
     mask_array = (magenta_mask * 255).astype(np.uint8)
     mask = Image.fromarray(mask_array, mode="L")
@@ -55,28 +55,34 @@ def detect_magenta_boxes(template: Image.Image):
             if mask_np[y, x] > 0 and not visited[y, x]:
                 boxes.append(flood_fill(x, y))
 
-    # Filter small boxes
+    # Keep only reasonably large boxes
     boxes = [b for b in boxes if (b[2] - b[0] > 40 and b[3] - b[1] > 40)]
     boxes.sort(key=lambda b: (b[1], b[0]))
     return boxes, mask
 
 
-def preload_template(path: str):
-    """Preload template image and its magenta boxes/mask"""
-    if path not in templates:
-        img = Image.open(path).convert("RGBA")
-        boxes, mask = detect_magenta_boxes(img)
-        templates[path] = img
-        boxes_cache[path] = boxes
-        masks_cache[path] = mask
-    return templates[path], boxes_cache[path], masks_cache[path]
+def preload_all():
+    """Preload templates and cache magenta boxes + masks"""
+    global templates, boxes_cache, masks_cache
+    for template_name in ["magenta.png", "final3.png"]:
+        try:
+            template = Image.open(template_name).convert("RGBA")
+            boxes, mask = detect_magenta_boxes(template)
+            templates[template_name] = template
+            boxes_cache[template_name] = boxes
+            masks_cache[template_name] = mask
+            print(f"✅ Preloaded {template_name} with {len(boxes)} boxes")
+        except Exception as e:
+            print(f"⚠️ Could not preload {template_name}: {e}")
 
 
-def place_images(template_path: str, user_photos: list):
-    """Place user photos into cached magenta boxes of template."""
-    template, boxes, mask = preload_template(template_path)
+def place_images(template_name: str, user_photos: list):
+    """Place user photos into magenta boxes of template (cached)."""
+    template = templates[template_name]
+    boxes = boxes_cache[template_name]
+    mask = masks_cache[template_name]
+
     combined = template.copy()
-
     if len(boxes) < len(user_photos):
         raise ValueError(f"Expected {len(user_photos)} magenta boxes, found {len(boxes)}")
 
@@ -97,11 +103,14 @@ def export_result(images, output_type: str):
     if output_type == "pdf":
         if isinstance(images, list):
             rgb_images = [img.convert("RGB") for img in images]
-            rgb_images[0].save(file_io, "PDF", save_all=True, append_images=rgb_images[1:], resolution=100.0)
+            rgb_images[0].save(
+                file_io, "PDF", save_all=True, append_images=rgb_images[1:], resolution=100.0
+            )
         else:
             images.convert("RGB").save(file_io, "PDF", resolution=100.0)
         file_io.seek(0)
-        return send_file(file_io, mimetype="application/pdf", as_attachment=True, download_name="result.pdf")
+        return send_file(file_io, mimetype="application/pdf",
+                         as_attachment=True, download_name="result.pdf")
 
     else:  # PNG
         if isinstance(images, list):
@@ -109,7 +118,8 @@ def export_result(images, output_type: str):
         else:
             images.save(file_io, "PNG")
         file_io.seek(0)
-        return send_file(file_io, mimetype="image/png", as_attachment=True, download_name="result.png")
+        return send_file(file_io, mimetype="image/png",
+                         as_attachment=True, download_name="result.png")
 
 
 @app.route("/process", methods=["POST"])
@@ -136,7 +146,13 @@ def process_triple():
 
     combined = place_images("final3.png", user_photos)
     output_type = request.args.get("output", "png").lower()
+
     return export_result(combined, output_type)
+
+
+# ✅ Always preload whether local or on Render
+with app.app_context():
+    preload_all()
 
 
 if __name__ == "__main__":
